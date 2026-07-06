@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facturo - Gestion de factures pour Freelances</title>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-YD11MWV6TV"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-YD11MWV6TV');
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { navy: '#102a43', 'navy-light': '#486581', 'navy-dark': '#0B1f33' },
+                    fontFamily: { 'jakarta': ['Plus Jakarta Sans', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; }
+        .view { display: none; }
+        .active-view { display: block; }
+        .toast { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @media (max-width: 768px) {
+            #toast-container { top: auto !important; right: auto !important; bottom: 90px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 350px; }
+            @keyframes slideIn { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="text-navy">
+    <div id="toast-container" class="fixed top-5 right-5 z-[100] space-y-4"></div>
+
+    <div id="auth-view" class="min-h-screen flex items-center justify-center p-4 bg-navy">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md">
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-extrabold text-navy">Facturo</h1>
+                <p class="text-gray-500 mt-2">Gérez vos factures en toute simplicité</p>
+            </div>
+            <div id="auth-container">
+                <div class="space-y-4">
+                    <h2 class="text-xl font-bold text-navy">Connexion</h2>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Email</label>
+                        <input type="email" id="login-email" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-navy focus:border-navy outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Mot de passe</label>
+                        <input type="password" id="login-password" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-navy focus:border-navy outline-none transition">
+                    </div>
+                    <button type="button" id="auth-submit-btn" onclick="handleLogin()" class="w-full bg-navy text-white py-3 rounded-lg font-semibold hover:bg-navy-dark transition">Se connecter</button>
+                    <p class="text-center text-sm text-gray-600">Pas de compte ? <button type="button" onclick="toggleAuthView('signup')" class="text-navy font-semibold hover:underline">S'inscrire</button></p>
+                    <p class="text-center text-sm"><button type="button" onclick="toggleAuthView('reset')" class="text-gray-500 hover:text-navy">Mot de passe oublié ?</button></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-view" class="hidden min-h-screen flex flex-col md:flex-row">
+        <aside class="hidden md:flex flex-col w-64 bg-navy text-white h-screen sticky top-0">
+            <div class="p-6 text-2xl font-extrabold border-b border-navy-light">Facturo</div>
+            <nav class="flex-1 px-4 py-6 space-y-2">
+                <button onclick="switchView('dashboard')" class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-navy-light transition flex items-center space-x-3"><span>📊</span><span>Tableau de bord</span></button>
+                <button onclick="switchView('clients')" class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-navy-light transition flex items-center space-x-3"><span>👥</span><span>Clients</span></button>
+                <button onclick="switchView('invoices')" class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-navy-light transition flex items-center space-x-3"><span>📄</span><span>Factures</span></button>
+                <button onclick="switchView('settings')" class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-navy-light transition flex items-center space-x-3"><span>⚙️</span><span>Paramètres</span></button>
+            </nav>
+            <div class="p-4 border-t border-navy-light">
+                <button id="upgrade-btn-sidebar" onclick="handleStripeCheckout()" class="w-full bg-yellow-400 text-navy py-2 rounded-lg font-bold mb-2 hidden">Passer Pro (7€/mois)</button>
+                <button onclick="handleLogout()" class="w-full text-left px-4 py-2 text-sm hover:bg-navy-light rounded-lg transition">Déconnexion</button>
+            </div>
+        </aside>
+        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-navy text-white flex justify-around py-2 z-50">
+            <button onclick="switchView('dashboard')" class="flex flex-col items-center text-xs p-2">📊</button>
+            <button onclick="switchView('clients')" class="flex flex-col items-center text-xs p-2">👥</button>
+            <button onclick="switchView('invoices')" class="flex flex-col items-center text-xs p-2">📄</button>
+            <button onclick="switchView('settings')" class="flex flex-col items-center text-xs p-2">⚙️</button>
+        </nav>
+        <main class="flex-1 p-4 md:p-8 pb-20 md:pb-8 overflow-y-auto">
+            <section id="dashboard-view" class="view">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                    <h1 class="text-3xl font-extrabold text-navy">Tableau de bord</h1>
+                    <div id="plan-alert" class="hidden bg-orange-100 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium"></div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><p class="text-gray-500 text-sm font-medium">Total facturé</p><p id="stat-total" class="text-2xl font-bold text-navy mt-2">0.00 €</p></div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><p class="text-gray-500 text-sm font-medium">Payé</p><p id="stat-paid" class="text-2xl font-bold text-green-600 mt-2">0.00 €</p></div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><p class="text-gray-500 text-sm font-medium">En attente</p><p id="stat-pending" class="text-2xl font-bold text-orange-500 mt-2">0.00 €</p></div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><p class="text-gray-500 text-sm font-medium">En retard</p><p id="stat-overdue" class="text-2xl font-bold text-red-600 mt-2">0.00 €</p></div>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8"><h3 class="text-lg font-bold text-navy mb-4">Revenus mensuels</h3><canvas id="revenue-chart" height="100"></canvas></div>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><h3 class="text-lg font-bold text-navy mb-4">Dernières factures</h3><div id="recent-invoices" class="space-y-3"></div></div>
+            </section>
+            <section id="clients-view" class="view">
+                <div class="flex justify-between items-center mb-6">
+                    <h1 class="text-3xl font-extrabold text-navy">Clients</h1>
+                    <button onclick="openClientModal()" class="bg-navy text-white px-4 py-2 rounded-lg font-semibold">+ Nouveau client</button>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <table class="w-full"><thead class="bg-gray-50 border-b border-gray-100"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Email</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Téléphone</th><th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th></tr></thead>
+                    <tbody id="clients-table" class="divide-y divide-gray-100"></tbody></table>
+                </div>
+            </section>
+            <section id="invoices-view" class="view">
+                <div class="flex justify-between items-center mb-6">
+                    <h1 class="text-3xl font-extrabold text-navy">Factures</h1>
+                    <button onclick="openInvoiceModal()" class="bg-navy text-white px-4 py-2 rounded-lg font-semibold">+ Nouvelle facture</button>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <table class="w-full"><thead class="bg-gray-50 border-b border-gray-100"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Numéro</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Client</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Date</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th><th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th></tr></thead>
+                    <tbody id="invoices-table" class="divide-y divide-gray-100"></tbody></table>
+                </div>
+            </section>
+            <section id="settings-view" class="view">
+                <h1 class="text-3xl font-extrabold text-navy mb-6">Paramètres</h1>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                        <h3 class="text-lg font-bold text-navy mb-4">Informations professionnelles</h3>
+                        <div class="space-y-4">
+                            <div><label class="block text-sm font-medium text-gray-700">Nom / Société</label><input type="text" id="prof-name" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none"></div>
+                            <div><label class="block text-sm font-medium text-gray-700">Adresse</label><input type="text" id="prof-address" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none"></div>
+                            <div><label class="block text-sm font-medium text-gray-700">SIRET</label><input type="text" id="prof-siret" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none"></div>
+                            <div><label class="block text-sm font-medium text-gray-700">IBAN</label><input type="text" id="prof-iban" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none"></div>
+                            <div><label class="block text-sm font-medium text-gray-700">Mentions légales</label><textarea id="prof-mentions" rows="3" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none"></textarea></div>
+                            <button onclick="saveSettings()" class="bg-navy text-white px-4 py-2 rounded-lg font-semibold">Sauvegarder</button>
+                        </div>
+                    </div>
+                    <div class="space-y-6">
+                        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><h3 class="text-lg font-bold text-navy mb-4">Abonnement</h3><div id="sub-info" class="text-gray-700"></div></div>
+                        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><h3 class="text-lg font-bold text-navy mb-4">Données & RGPD</h3><button onclick="exportData()" class="w-full bg-gray-100 text-navy py-2 rounded-lg font-semibold">Exporter mes données (JSON)</button></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="modal-container"></div>
+
+    <script>
+        const SUPABASE_URL = 'https://rvncggemfndieqswrzsn.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ2bmNnZ2VtZm5kaWVxc3dyenNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxODUyMzEsImV4cCI6MjA5ODc2MTIzMX0.rs5B7lX875mlsUk8PWSR1-j6vS1hrBv8ujFeRVJ67Uo';
+        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let currentUser = null, userProfile = null, chartInstance = null;
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            const { data: { session } } = await sb.auth.getSession();
+            if (session) await initApp(session.user);
+            else showAuth();
+            sb.auth.onAuthStateChange(async (event, session) => {
+                if (event === 'SIGNED_IN' && session) await initApp(session.user);
+                else if (event === 'SIGNED_OUT') showAuth();
+            });
+        });
+
+        function showAuth() {
+            document.getElementById('auth-view').classList.remove('hidden');
+            document.getElementById('app-view').classList.add('hidden');
+            toggleAuthView('login');
+        }
+
+        async function initApp(user) {
+            currentUser = user;
+            await fetchProfile();
+            document.getElementById('auth-view').classList.add('hidden');
+            document.getElementById('app-view').classList.remove('hidden');
+            checkPlanUI();
+            switchView('dashboard');
+        }
+
+        async function fetchProfile() {
+            const { data, error } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+            if (error) {
+                const { data: newProfile } = await sb.from('profiles').insert([{ id: currentUser.id, email: currentUser.email, plan: 'free' }]).select().single();
+                userProfile = newProfile;
+            } else { userProfile = data; }
+        }
+
+        function checkPlanUI() {
+            const isPro = userProfile.plan === 'pro';
+            document.getElementById('upgrade-btn-sidebar').classList.toggle('hidden', isPro);
+            if (!isPro) {
+                document.getElementById('plan-alert').classList.remove('hidden');
+                document.getElementById('plan-alert').innerText = "Plan Gratuit : 3 clients max, 5 factures/mois. Passez Pro pour illimité.";
+            } else { document.getElementById('plan-alert').classList.add('hidden'); }
+            document.getElementById('sub-info').innerHTML = isPro
+                ? `<p class="font-semibold text-green-600 mb-2">Plan Pro Actif</p><p class="text-sm">Abonnement de 7€/mois.</p><button onclick="cancelSubscription()" class="mt-4 text-red-500 text-sm hover:underline">Annuler</button>`
+                : `<p class="font-semibold text-gray-600 mb-2">Plan Gratuit</p><button onclick="handleStripeCheckout()" class="mt-2 bg-navy text-white px-4 py-2 rounded-lg font-semibold">Passer Pro (7€/mois)</button>`;
+        }
+
+        function switchView(viewName) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
+            document.getElementById(viewName + '-view').classList.add('active-view');
+            if (viewName === 'dashboard') loadDashboard();
+            if (viewName === 'clients') loadClients();
+            if (viewName === 'invoices') loadInvoices();
+            if (viewName === 'settings') loadSettings();
+        }
+
+        function toggleAuthView(type) {
+            const container = document.getElementById('auth-container');
+            if (type === 'login') {
+                container.innerHTML = `<div class="space-y-4">
+                    <h2 class="text-xl font-bold text-navy">Connexion</h2>
+                    <div><label class="block text-sm font-medium text-gray-700">Email</label>
+                    <input type="email" id="login-email" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg outline-none"></div>
+                    <div><label class="block text-sm font-medium text-gray-700">Mot de passe</label>
+                    <input type="password" id="login-password" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg outline-none"></div>
+                    <button type="button" id="auth-submit-btn" onclick="handleLogin()" class="w-full bg-navy text-white py-3 rounded-lg font-semibold">Se connecter</button>
+                    <p class="text-center text-sm text-gray-600">Pas de compte ? <button type="button" onclick="toggleAuthView('signup')" class="text-navy font-semibold hover:underline">S'inscrire</button></p>
+                    <p class="text-center text-sm"><button type="button" onclick="toggleAuthView('reset')" class="text-gray-500 hover:text-navy">Mot de passe oublié ?</button></p>
+                </div>`;
+            } else if (type === 'signup') {
+                container.innerHTML = `<div class="space-y-4">
+                    <h2 class="text-xl font-bold text-navy">Inscription</h2>
+                    <div><label class="block text-sm font-medium text-gray-700">Email</label>
+                    <input type="email" id="signup-email" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg outline-none"></div>
+                    <div><label class="block text-sm font-medium text-gray-700">Mot de passe (6 min.)</label>
+                    <input type="password" id="signup-password" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg outline-none"></div>
+                    <button type="button" id="auth-submit-btn" onclick="handleSignup()" class="w-full bg-navy text-white py-3 rounded-lg font-semibold">Créer mon compte</button>
+                    <p class="text-center text-sm text-gray-600">Déjà inscrit ? <button type="button" onclick="toggleAuthView('login')" class="text-navy font-semibold hover:underline">Se connecter</button></p>
+                </div>`;
+            } else if (type === 'reset') {
+                container.innerHTML = `<div class="space-y-4">
+                    <h2 class="text-xl font-bold text-navy">Réinitialiser le mot de passe</h2>
+                    <div><label class="block text-sm font-medium text-gray-700">Email</label>
+                    <input type="email" id="reset-email" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg outline-none"></div>
+                    <button type="button" id="auth-submit-btn" onclick="handleReset()" class="w-full bg-navy text-white py-3 rounded-lg font-semibold">Envoyer le lien</button>
+                    <p class="text-center text-sm"><button type="button" onclick="toggleAuthView('login')" class="text-navy font-semibold hover:underline">Retour</button></p>
+                </div>`;
+            }
+        }
+
+        async function handleLogin() {
+            const btn = document.getElementById('auth-submit-btn');
+            const orig = btn.innerText; btn.disabled = true; btn.innerText = 'Chargement...';
+            const email = document.getElementById('login-email').value;
+            const pass = document.getElementById('login-password').value;
+            const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+            if (error) { toast(error.message, 'error'); btn.disabled = false; btn.innerText = orig; }
+        }
+
+        async function handleSignup() {
+            const btn = document.getElementById('auth-submit-btn');
+            const orig = btn.innerText; btn.disabled = true; btn.innerText = 'Chargement...';
+            const email = document.getElementById('signup-email').value;
+            const pass = document.getElementById('signup-password').value;
+            if (pass.length < 6) { toast('Mot de passe : 6 caractères minimum', 'error'); btn.disabled = false; btn.innerText = orig; return; }
+            const { data: signUpData, error: signUpError } = await sb.auth.signUp({ email, password: pass });
+            if (signUpError) { toast(signUpError.message, 'error'); btn.disabled = false; btn.innerText = orig; return; }
+            const { error: signInError } = await sb.auth.signInWithPassword({ email, password: pass });
+            if (signInError) { toast('Inscription réussie ! Vérifiez votre email.', 'info'); toggleAuthView('login'); }
+            else { toast('Inscription réussie !', 'success'); }
+            btn.disabled = false; btn.innerText = orig;
+        }
+
+        async function handleReset() {
+            const btn = document.getElementById('auth-submit-btn');
+            const orig = btn.innerText; btn.disabled = true; btn.innerText = 'Chargement...';
+            const email = document.getElementById('reset-email').value;
+            const { error } = await sb.auth.resetPasswordForEmail(email);
+            if (error) toast(error.message, 'error');
+            else { toast('Lien envoyé !', 'success'); toggleAuthView('login'); }
+            btn.disabled = false; btn.innerText = orig;
+        }
+
+        async function handleLogout() { await sb.auth.signOut(); }
+
+        async function loadDashboard() {
+            const { data: invoices } = await sb.from('invoices').select('*, clients(name)').eq('user_id', currentUser.id);
+            let total = 0, paid = 0, pending = 0, overdue = 0;
+            const monthlyData = {};
+            const now = new Date();
+            for(let i=5; i>=0; i--) { const d = new Date(now.getFullYear(), now.getMonth()-i, 1); monthlyData[d.getFullYear()+'-'+d.getMonth()] = 0; }
+            if (invoices) {
+                invoices.forEach(inv => {
+                    total += inv.total;
+                    if (inv.status === 'paid') paid += inv.total;
+                    else { pending += inv.total; if (new Date(inv.due_date) < now) overdue += inv.total; }
+                    const d = new Date(inv.issue_date);
+                    const key = d.getFullYear()+'-'+d.getMonth();
+                    if (monthlyData.hasOwnProperty(key)) monthlyData[key] += inv.total;
+                });
+            }
+            document.getElementById('stat-total').innerText = total.toFixed(2)+' €';
+            document.getElementById('stat-paid').innerText = paid.toFixed(2)+' €';
+            document.getElementById('stat-pending').innerText = pending.toFixed(2)+' €';
+            document.getElementById('stat-overdue').innerText = overdue.toFixed(2)+' €';
+            const ctx = document.getElementById('revenue-chart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+            chartInstance = new Chart(ctx, { type: 'bar', data: { labels: Object.keys(monthlyData).map(k => { const [y,m] = k.split('-'); return new Date(y,m,1).toLocaleDateString('fr-FR',{month:'short',year:'2-digit'}); }), datasets: [{ label: 'Revenus (€)', data: Object.values(monthlyData), backgroundColor: '#102a43', borderRadius: 6 }] }, options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } } });
+            const recent = invoices?.slice(0,5) || [];
+            document.getElementById('recent-invoices').innerHTML = recent.map(inv => `<div class="flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg"><div><p class="font-medium text-navy">${inv.number}</p><p class="text-sm text-gray-500">${inv.clients?.name||'N/A'}</p></div><div class="text-right"><p class="font-bold text-navy">${inv.total.toFixed(2)} €</p><p class="text-xs ${inv.status==='paid'?'text-green-600':'text-orange-500'}">${inv.status}</p></div></div>`).join('') || '<p class="text-gray-500 text-sm">Aucune facture</p>';
+        }
+
+        async function loadClients() {
+            const { data: clients } = await sb.from('clients').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+            document.getElementById('clients-table').innerHTML = clients?.map(c => `<tr><td class="px-6 py-4 font-medium">${c.name}</td><td class="px-6 py-4 hidden md:table-cell text-gray-600">${c.email||'-'}</td><td class="px-6 py-4 hidden md:table-cell text-gray-600">${c.phone||'-'}</td><td class="px-6 py-4 text-right"><button onclick="deleteClient('${c.id}')" class="text-red-500 hover:text-red-700 text-sm">Supprimer</button></td></tr>`).join('') || '<tr><td colspan="4" class="px-6 py-8 text-center text-gray-400">Aucun client</td></tr>';
+        }
+
+        async function openClientModal() {
+            if (userProfile.plan === 'free') {
+                const { count } = await sb.from('clients').select('*', { count: 'exact', head: true }).eq('user_id', currentUser.id);
+                if (count >= 3) { toast('Limite atteinte (3 clients). Passez Pro !', 'error'); return; }
+            }
+            document.getElementById('modal-container').innerHTML = `<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onclick="closeModal(event)"><div class="bg-white rounded-2xl p-6 w-full max-w-md" onclick="event.stopPropagation()"><h3 class="text-xl font-bold text-navy mb-4">Nouveau client</h3><div class="space-y-4"><div><label class="block text-sm font-medium text-gray-700">Nom *</label><input type="text" id="c-name" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none"></div><div><label class="block text-sm font-medium text-gray-700">Email</label><input type="email" id="c-email" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none"></div><div><label class="block text-sm font-medium text-gray-700">Téléphone</label><input type="text" id="c-phone" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none"></div><div class="flex space-x-2 pt-4"><button type="button" onclick="closeModal()" class="flex-1 bg-gray-100 py-2 rounded-lg font-semibold">Annuler</button><button type="button" onclick="saveClient()" class="flex-1 bg-navy text-white py-2 rounded-lg font-semibold">Créer</button></div></div></div></div>`;
+        }
+
+        async function saveClient() {
+            const { error } = await sb.from('clients').insert([{ user_id: currentUser.id, name: document.getElementById('c-name').value, email: document.getElementById('c-email').value, phone: document.getElementById('c-phone').value }]);
+            if (error) toast('Erreur création', 'error');
+            else { toast('Client ajouté !', 'success'); closeModal(); loadClients(); }
+        }
+
+        async function deleteClient(id) {
+            if (!confirm('Supprimer ce client ?')) return;
+            await sb.from('clients').delete().eq('id', id);
+            loadClients();
+        }
+
+        async function loadInvoices() {
+            const { data: invoices } = await sb.from('invoices').select('*, clients(name)').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+            document.getElementById('invoices-table').innerHTML = invoices?.map(inv => `<tr><td class="px-6 py-4 font-medium text-navy">${inv.number}</td><td class="px-6 py-4 hidden md:table-cell text-gray-600">${inv.clients?.name||'N/A'}</td><td class="px-6 py-4 hidden md:table-cell text-gray-600">${new Date(inv.issue_date).toLocaleDateString('fr-FR')}</td><td class="px-6 py-4"><span class="px-2 py-1 text-xs rounded-full ${inv.status==='paid'?'bg-green-100 text-green-700':inv.status==='pending'?'bg-orange-100 text-orange-700':'bg-red-100 text-red-700'}">${inv.status}</span></td><td class="px-6 py-4 text-right space-x-2"><button onclick="generatePDF('${inv.id}')" class="text-navy hover:underline text-sm">PDF</button>${inv.status!=='paid'?`<button onclick="markAsPaid('${inv.id}')" class="text-green-600 hover:underline text-sm">Payée</button>`:''}<button onclick="deleteInvoice('${inv.id}')" class="text-red-500 hover:underline text-sm">Suppr</button></td></tr>`).join('') || '<tr><td colspan="5" class="px-6 py-8 text-center text-gray-400">Aucune facture</td></tr>';
+        }
+
+        async function openInvoiceModal() {
+            if (userProfile.plan === 'free') {
+                const startOfMonth = new Date(); startOfMonth.setDate(1);
+                const { count } = await sb.from('invoices').select('*', { count: 'exact', head: true }).eq('user_id', currentUser.id).gte('issue_date', startOfMonth.toISOString().split('T')[0]);
+                if (count >= 5) { toast('Limite atteinte (5 factures/mois). Passez Pro !', 'error'); return; }
+            }
+            const { data: clients } = await sb.from('clients').select('*').eq('user_id', currentUser.id);
+            if (!clients || clients.length === 0) { toast("Ajoutez d'abord un client.", 'error'); return; }
+            document.getElementById('modal-container').innerHTML = `<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onclick="closeModal(event)"><div class="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()"><h3 class="text-xl font-bold text-navy mb-4">Nouvelle facture</h3><div class="space-y-4"><div><label class="block text-sm font-medium text-gray-700">Client *</label><select id="i-client" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none">${clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select></div><div class="grid grid-cols-2 gap-4"><div><label class="block text-sm font-medium text-gray-700">Date émission</label><input type="date" id="i-issue" value="${new Date().toISOString().split('T')[0]}" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none"></div><div><label class="block text-sm font-medium text-gray-700">Date échéance</label><input type="date" id="i-due" value="${new Date(Date.now()+30*24*60*60*1000).toISOString().split('T')[0]}" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none"></div></div><div><label class="block text-sm font-medium text-gray-700">Prestations</label><div id="items-container" class="space-y-2"><div class="flex space-x-2"><input type="text" placeholder="Description" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none item-desc"><input type="number" placeholder="Qté" step="1" value="1" class="w-16 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none item-qty"><input type="number" placeholder="Prix" step="0.01" class="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none item-price"><button type="button" onclick="addItem()" class="bg-gray-100 px-3 rounded-lg font-bold">+</button></div></div></div><div class="flex space-x-2 pt-4"><button type="button" onclick="closeModal()" class="flex-1 bg-gray-100 py-2 rounded-lg font-semibold">Annuler</button><button type="button" onclick="saveInvoice()" class="flex-1 bg-navy text-white py-2 rounded-lg font-semibold">Créer</button></div></div></div></div>`;
+        }
+
+        function addItem() {
+            const div = document.createElement('div'); div.className = 'flex space-x-2';
+            div.innerHTML = '<input type="text" placeholder="Description" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none item-desc"><input type="number" placeholder="Qté" step="1" value="1" class="w-16 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none item-qty"><input type="number" placeholder="Prix" step="0.01" class="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none item-price"><button type="button" onclick="this.parentElement.remove()" class="bg-red-100 text-red-600 px-3 rounded-lg font-bold">x</button>';
+            document.getElementById('items-container').appendChild(div);
+        }
+
+        async function saveInvoice() {
+            const items = []; let total = 0;
+            document.querySelectorAll('#items-container > div').forEach(row => {
+                const desc = row.querySelector('.item-desc').value;
+                const qty = parseFloat(row.querySelector('.item-qty').value||0);
+                const price = parseFloat(row.querySelector('.item-price').value||0);
+                if (desc && qty > 0) { items.push({ description: desc, quantity: qty, unit_price: price, total: qty*price }); total += qty*price; }
+            });
+            if (items.length === 0) { toast('Ajoutez au moins une prestation.', 'error'); return; }
+            const year = new Date().getFullYear();
+            const { count } = await sb.from('invoices').select('*', { count: 'exact', head: true }).eq('user_id', currentUser.id).like('number', `FAC-${year}-%`);
+            const number = `FAC-${year}-${String(count+1).padStart(3,'0')}`;
+            const { error } = await sb.from('invoices').insert([{ user_id: currentUser.id, client_id: document.getElementById('i-client').value, number, issue_date: document.getElementById('i-issue').value, due_date: document.getElementById('i-due').value, items, total, status: 'pending' }]);
+            if (error) toast('Erreur création facture', 'error');
+            else { toast('Facture créée !', 'success'); closeModal(); loadInvoices(); }
+        }
+
+        async function markAsPaid(id) {
+            await sb.from('invoices').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', id);
+            toast('Facture payée !', 'success'); loadInvoices();
+        }
+
+        async function deleteInvoice(id) {
+            if (!confirm('Supprimer ?')) return;
+            await sb.from('invoices').delete().eq('id', id); loadInvoices();
+        }
+
+        async function generatePDF(invoiceId) {
+            const { data: inv } = await sb.from('invoices').select('*, clients(*), profiles(*)').eq('id', invoiceId).single();
+            if (!inv) return;
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const profile = inv.profiles || {};
+            doc.setFillColor(16,42,67); doc.rect(0,0,210,40,'F');
+            doc.setTextColor(255,255,255); doc.setFontSize(24); doc.setFont('helvetica','bold');
+            doc.text('FACTURE',20,25); doc.setFontSize(10); doc.setFont('helvetica','normal');
+            doc.text(profile.company_name||'Mon Entreprise',20,33);
+            if(profile.address) doc.text(profile.address,20,38);
+            doc.setTextColor(16,42,67); doc.setFontSize(12); doc.setFont('helvetica','bold');
+            doc.text('N° '+inv.number,190,20,{align:'right'});
+            doc.setFontSize(10); doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100);
+            doc.text('Date: '+new Date(inv.issue_date).toLocaleDateString('fr-FR'),190,28,{align:'right'});
+            doc.text('Échéance: '+new Date(inv.due_date).toLocaleDateString('fr-FR'),190,34,{align:'right'});
+            doc.setTextColor(16,42,67); doc.setFont('helvetica','bold'); doc.setFontSize(11);
+            doc.text('Facturé à :',20,56); doc.setFont('helvetica','normal'); doc.setFontSize(10);
+            doc.text(inv.clients?.name||'',20,63);
+            if(inv.clients?.email) doc.text(inv.clients.email,20,69);
+            let y=85;
+            doc.setFillColor(240,240,240); doc.rect(20,y,170,8,'F');
+            doc.setFont('helvetica','bold'); doc.setFontSize(9);
+            doc.text('Description',22,y+5.5); doc.text('Qté',130,y+5.5,{align:'right'}); doc.text('Prix Unit.',160,y+5.5,{align:'right'}); doc.text('Total',188,y+5.5,{align:'right'});
+            y+=12; doc.setFont('helvetica','normal');
+            inv.items.forEach(item => {
+                doc.text(item.description.substring(0,55),22,y);
+                doc.text(String(item.quantity),130,y,{align:'right'});
+                doc.text(item.unit_price.toFixed(2)+' €',160,y,{align:'right'});
+                doc.text(item.total.toFixed(2)+' €',188,y,{align:'right'});
+                y+=8;
+            });
+            y+=4; doc.setDrawColor(16,42,67); doc.line(130,y,190,y); y+=8;
+            doc.setFont('helvetica','bold'); doc.setFontSize(13);
+            doc.text('TOTAL TTC :',130,y); doc.text(inv.total.toFixed(2)+' €',188,y,{align:'right'});
+            doc.setFontSize(8); doc.setFont('helvetica','italic'); doc.setTextColor(120,120,120);
+            doc.text(profile.legal_mentions||'TVA non applicable, art. 293 B du CGI',20,272);
+            if(profile.iban) doc.text('IBAN : '+profile.iban,20,278);
+            if(profile.siret) doc.text('SIRET : '+profile.siret,20,284);
+            if(inv.status==='paid'){doc.setTextColor(39,103,73);doc.setFontSize(20);doc.setFont('helvetica','bold');doc.text('PAYÉE',190,65,{align:'right'});}
+            doc.save(inv.number+'.pdf');
+        }
+
+        function loadSettings() {
+            document.getElementById('prof-name').value = userProfile?.company_name||'';
+            document.getElementById('prof-address').value = userProfile?.address||'';
+            document.getElementById('prof-siret').value = userProfile?.siret||'';
+            document.getElementById('prof-iban').value = userProfile?.iban||'';
+            document.getElementById('prof-mentions').value = userProfile?.legal_mentions||'';
+        }
+
+        async function saveSettings() {
+            const updates = { company_name: document.getElementById('prof-name').value, address: document.getElementById('prof-address').value, siret: document.getElementById('prof-siret').value, iban: document.getElementById('prof-iban').value, legal_mentions: document.getElementById('prof-mentions').value };
+            const { error } = await sb.from('profiles').update(updates).eq('id', currentUser.id);
+            if (error) toast('Erreur', 'error');
+            else { Object.assign(userProfile, updates); toast('Profil mis à jour !', 'success'); }
+        }
+
+        function handleStripeCheckout() {
+            window.location.href = 'https://buy.stripe.com/PAYMENT_LINK?client_reference_id=' + currentUser.id;
+        }
+
+        function cancelSubscription() { toast("Contactez le support pour annuler.", "info"); }
+
+        async function exportData() {
+            const { data: clients } = await sb.from('clients').select('*').eq('user_id', currentUser.id);
+            const { data: invoices } = await sb.from('invoices').select('*').eq('user_id', currentUser.id);
+            const blob = new Blob([JSON.stringify({ profile: userProfile, clients, invoices }, null, 2)], { type: "application/json" });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = "facturo_export.json"; a.click();
+        }
+
+        function closeModal(e) { if (!e || e.target.classList.contains('bg-black')) document.getElementById('modal-container').innerHTML = ''; }
+
+        function toast(msg, type='info') {
+            const colors = { success: 'bg-green-500', error: 'bg-red-500', info: 'bg-navy' };
+            const div = document.createElement('div');
+            div.className = 'toast '+colors[type]+' text-white px-6 py-3 rounded-lg shadow-lg font-medium text-center';
+            div.innerText = msg;
+            document.getElementById('toast-container').appendChild(div);
+            setTimeout(() => { div.style.opacity='0'; div.style.transition='opacity 0.3s'; setTimeout(()=>div.remove(),300); }, 3500);
+        }
+    </script>
+</body>
+</html>
