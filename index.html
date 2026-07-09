@@ -18,6 +18,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- KKiaPay SDK -->
+    <script src="https://cdn.kkiapay.me/k.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -441,7 +443,27 @@
         }
 
         function handleStripeCheckout() {
-            window.location.href = 'https://buy.stripe.com/PAYMENT_LINK?client_reference_id=' + currentUser.id;
+            // Intégration KKiaPay
+            const handler = KKiaPay({
+                amount: 4590, // 7€ ≈ 4590 FCFA
+                api_key: '2eaebe10808e8ebf4741a18a0d5e096c921b6fc4',
+                sandbox: true, // Passer à false quand le compte est activé
+                email: currentUser.email,
+                name: userProfile.company_name || currentUser.email,
+                data: currentUser.id, // Pour identifier l'utilisateur après paiement
+                callback: function(response) {
+                    console.log('Paiement KKiaPay:', response);
+                    if (response.transactionId) {
+                        // Paiement réussi - mettre à jour le plan via Supabase
+                        sb.from('profiles').update({ plan: 'pro' }).eq('id', currentUser.id).then(() => {
+                            userProfile.plan = 'pro';
+                            checkPlanUI();
+                            toast('Paiement réussi ! Bienvenue en Pro 🎉', 'success');
+                        });
+                    }
+                }
+            });
+            handler.show();
         }
 
         function cancelSubscription() { toast("Contactez le support pour annuler.", "info"); }
