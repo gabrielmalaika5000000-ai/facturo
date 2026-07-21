@@ -359,6 +359,17 @@
                 toast(error.message, 'error');
             } else {
                 toast('Inscription réussie ! Vous pouvez vous connecter.', 'success');
+                // Envoyer email de bienvenue
+                try {
+                    const emailVal = document.getElementById('signup-email')?.value;
+                    if (emailVal) {
+                        fetch('/api/welcome-email', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email: emailVal })
+                        });
+                    }
+                } catch(e) { console.log('Welcome email:', e); }
                 toggleAuthView('login');
             }
         }
