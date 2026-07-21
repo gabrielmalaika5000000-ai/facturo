@@ -30,7 +30,6 @@
         loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
         loadScript("https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js");
         loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2");
-        loadScript("https://cdn.kkiapay.me/kkiapay.js");
     </script>
 
     <script>
@@ -48,6 +47,23 @@
                 }
             }
         }
+        
+        // Map pour l'auto-remplissage de la devise
+        const countryCurrencyMap = {
+            'Sénégal': { code: 'XOF', symbol: 'FCFA' },
+            'Mali': { code: 'XOF', symbol: 'FCFA' },
+            'Côte d\'Ivoire': { code: 'XOF', symbol: 'FCFA' },
+            'Burkina Faso': { code: 'XOF', symbol: 'FCFA' },
+            'Cameroun': { code: 'XAF', symbol: 'FCFA' },
+            'Congo': { code: 'XAF', symbol: 'FCFA' },
+            'France': { code: 'EUR', symbol: '€' },
+            'Belgique': { code: 'EUR', symbol: '€' },
+            'Suisse': { code: 'CHF', symbol: 'CHF' },
+            'Canada': { code: 'CAD', symbol: 'CAD' },
+            'Maroc': { code: 'MAD', symbol: 'MAD' },
+            'Tunisie': { code: 'TND', symbol: 'TND' },
+            'Algérie': { code: 'DZD', symbol: 'DZD' }
+        };
     </script>
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; }
@@ -131,13 +147,11 @@
         </div>
     </div>
 
-    <!-- PAYMENT VIEW (KKiaPay) -->
     <div id="pay-view" class="hidden min-h-screen flex items-center justify-center p-4 bg-navy">
         <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md text-center">
             <h1 class="text-2xl font-extrabold text-navy mb-2">Règlement de Facture</h1>
             <p class="text-gray-500 mb-4">Facture N°: <span class="font-bold" id="pay-num"></span></p>
-            <p class="text-4xl font-extrabold text-navy mb-8"><span id="pay-amount"></span> FCFA</p>
-            <button id="kkiapay-btn" class="w-full bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600 transition hidden">Payer maintenant</button>
+            <p class="text-4xl font-extrabold text-navy mb-8"><span id="pay-amount"></span> <span id="pay-currency">FCFA</span></p>
             <div id="pay-status" class="mt-6 font-medium text-orange-500">Préparation du paiement...</div>
         </div>
     </div>
@@ -173,10 +187,10 @@
                     <div id="plan-alert" class="hidden bg-orange-100 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium"></div>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><p class="text-gray-500 text-sm font-medium">Total facturé</p><p id="stat-total" class="text-2xl font-bold text-navy mt-2">0.00 €</p></div>
-                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><p class="text-gray-500 text-sm font-medium">Payé</p><p id="stat-paid" class="text-2xl font-bold text-green-600 mt-2">0.00 €</p></div>
-                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><p class="text-gray-500 text-sm font-medium">En attente</p><p id="stat-pending" class="text-2xl font-bold text-orange-500 mt-2">0.00 €</p></div>
-                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><p class="text-gray-500 text-sm font-medium">En retard</p><p id="stat-overdue" class="text-2xl font-bold text-red-600 mt-2">0.00 €</p></div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><p class="text-gray-500 text-sm font-medium">Total facturé</p><p id="stat-total" class="text-2xl font-bold text-navy mt-2">0.00</p></div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><p class="text-gray-500 text-sm font-medium">Payé</p><p id="stat-paid" class="text-2xl font-bold text-green-600 mt-2">0.00</p></div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><p class="text-gray-500 text-sm font-medium">En attente</p><p id="stat-pending" class="text-2xl font-bold text-orange-500 mt-2">0.00</p></div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><p class="text-gray-500 text-sm font-medium">En retard</p><p id="stat-overdue" class="text-2xl font-bold text-red-600 mt-2">0.00</p></div>
                 </div>
                 <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
                     <h3 class="text-lg font-bold text-navy mb-4">Revenus mensuels</h3>
@@ -241,7 +255,33 @@
                             <div><label class="block text-sm font-medium text-gray-700">Nom / Société</label><input type="text" id="prof-name" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-navy focus:border-navy"></div>
                             <div><label class="block text-sm font-medium text-gray-700">Adresse</label><input type="text" id="prof-address" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-navy focus:border-navy"></div>
                             <div><label class="block text-sm font-medium text-gray-700">SIRET</label><input type="text" id="prof-siret" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-navy focus:border-navy"></div>
+                            
+                            <!-- SELECT PAYS / DEVISE -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Pays / Devise</label>
+                                <select id="prof-country" onchange="updateCurrencyFromCountry()" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-navy focus:border-navy">
+                                    <option value="Sénégal">Sénégal (FCFA - XOF)</option>
+                                    <option value="Mali">Mali (FCFA - XOF)</option>
+                                    <option value="Côte d'Ivoire">Côte d'Ivoire (FCFA - XOF)</option>
+                                    <option value="Burkina Faso">Burkina Faso (FCFA - XOF)</option>
+                                    <option value="Cameroun">Cameroun (FCFA - XAF)</option>
+                                    <option value="Congo">Congo (FCFA - XAF)</option>
+                                    <option value="France">France (Euro - €)</option>
+                                    <option value="Belgique">Belgique (Euro - €)</option>
+                                    <option value="Suisse">Suisse (CHF)</option>
+                                    <option value="Canada">Canada (CAD)</option>
+                                    <option value="Maroc">Maroc (MAD)</option>
+                                    <option value="Tunisie">Tunisie (TND)</option>
+                                    <option value="Algérie">Algérie (DZD)</option>
+                                </select>
+                            </div>
+
                             <div><label class="block text-sm font-medium text-gray-700">IBAN</label><input type="text" id="prof-iban" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-navy focus:border-navy"></div>
+                            
+                            <!-- NOUVEAUX CHAMPS PAIEMENT -->
+                            <div><label class="block text-sm font-medium text-gray-700">Numéro Wave</label><input type="text" id="prof-wave" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-navy focus:border-navy" placeholder="Ex: 76 00 00 00"></div>
+                            <div><label class="block text-sm font-medium text-gray-700">Numéro Orange Money</label><input type="text" id="prof-orange" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-navy focus:border-navy" placeholder="Ex: 07 00 00 00"></div>
+
                             <div><label class="block text-sm font-medium text-gray-700">Mentions légales (TVA, etc.)</label><textarea id="prof-mentions" rows="3" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-navy focus:border-navy"></textarea></div>
                             <button onclick="saveSettings()" class="bg-navy text-white px-4 py-2 rounded-lg font-semibold hover:bg-navy-dark transition">Sauvegarder</button>
                         </div>
@@ -277,6 +317,21 @@
         let currentUser = null;
         let userProfile = null;
         let chartInstance = null;
+
+        // Fonction utilitaire pour formater la devise
+        function formatMoney(amount) {
+            const symbol = userProfile?.currency_symbol || 'FCFA';
+            return `${parseFloat(amount).toFixed(2)} ${symbol}`;
+        }
+
+        function updateCurrencyFromCountry() {
+            const country = document.getElementById('prof-country').value;
+            const currencyInfo = countryCurrencyMap[country];
+            if (currencyInfo) {
+                userProfile.currency = currencyInfo.code;
+                userProfile.currency_symbol = currencyInfo.symbol;
+            }
+        }
 
         // ==========================================
         // FONCTIONS GLOBALES D'AUTHENTIFICATION
@@ -346,10 +401,19 @@
         async function fetchProfile() {
             const { data, error } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
             if (error) {
-                const { data: newProfile } = await sb.from('profiles').insert([{ id: currentUser.id, email: currentUser.email, plan: 'free' }]).select().single();
+                const { data: newProfile } = await sb.from('profiles').insert([{ 
+                    id: currentUser.id, 
+                    email: currentUser.email, 
+                    plan: 'free',
+                    country: 'Sénégal',
+                    currency: 'XOF',
+                    currency_symbol: 'FCFA'
+                }]).select().single();
                 userProfile = newProfile;
             } else {
                 userProfile = data;
+                // Assurer les valeurs par défaut si l'utilisateur existe mais n'a pas les champs
+                if (!userProfile.currency_symbol) userProfile.currency_symbol = 'FCFA';
             }
         }
 
@@ -397,10 +461,10 @@
                     if(monthlyData.hasOwnProperty(key)) monthlyData[key] += inv.total;
                 });
             }
-            document.getElementById('stat-total').innerText = `${total.toFixed(2)} €`;
-            document.getElementById('stat-paid').innerText = `${paid.toFixed(2)} €`;
-            document.getElementById('stat-pending').innerText = `${pending.toFixed(2)} €`;
-            document.getElementById('stat-overdue').innerText = `${overdue.toFixed(2)} €`;
+            document.getElementById('stat-total').innerText = formatMoney(total);
+            document.getElementById('stat-paid').innerText = formatMoney(paid);
+            document.getElementById('stat-pending').innerText = formatMoney(pending);
+            document.getElementById('stat-overdue').innerText = formatMoney(overdue);
 
             const ctx = document.getElementById('revenue-chart').getContext('2d');
             if (chartInstance) chartInstance.destroy();
@@ -408,7 +472,7 @@
                 type: 'bar',
                 data: {
                     labels: Object.keys(monthlyData).map(k => { const [y, m] = k.split('-'); return new Date(y, m, 1).toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }); }),
-                    datasets: [{ label: 'Revenus (€)', data: Object.values(monthlyData), backgroundColor: '#102a43', borderRadius: 6 }]
+                    datasets: [{ label: `Revenus (${userProfile.currency_symbol})`, data: Object.values(monthlyData), backgroundColor: '#102a43', borderRadius: 6 }]
                 },
                 options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
             });
@@ -417,7 +481,7 @@
             document.getElementById('recent-invoices').innerHTML = recent.map(inv => `
                 <div class="flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg">
                     <div><p class="font-medium text-navy">${inv.number}</p><p class="text-sm text-gray-500">${inv.clients?.name || 'N/A'}</p></div>
-                    <div class="text-right"><p class="font-bold text-navy">${inv.total.toFixed(2)} €</p><p class="text-xs ${inv.status === 'paid' ? 'text-green-600' : inv.status === 'pending' ? 'text-orange-500' : 'text-red-600'}">${inv.status}</p></div>
+                    <div class="text-right"><p class="font-bold text-navy">${formatMoney(inv.total)}</p><p class="text-xs ${inv.status === 'paid' ? 'text-green-600' : inv.status === 'pending' ? 'text-orange-500' : 'text-red-600'}">${inv.status}</p></div>
                 </div>
             `).join('') || '<p class="text-gray-500 text-sm">Aucune facture</p>';
         }
@@ -509,7 +573,7 @@
                                 <div><label class="block text-sm font-medium text-gray-700">Date *</label><input type="date" id="i-issue" value="${new Date().toISOString().split('T')[0]}" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-navy"></div>
                                 <div><label class="block text-sm font-medium text-gray-700">Echéance *</label><input type="date" id="i-due" value="${new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0]}" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-navy"></div>
                             </div>
-                            <div><label class="block text-sm font-medium text-gray-700">Prestations</label><div id="items-container" class="space-y-2"><div class="flex space-x-2"><input type="text" placeholder="Desc" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-navy item-desc"><input type="number" placeholder="Qté" class="w-16 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-navy item-qty"><input type="number" placeholder="Prix" class="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-navy item-price"><button onclick="addItem()" class="bg-gray-100 px-3 rounded-lg font-bold">+</button></div></div></div>
+                            <div><label class="block text-sm font-medium text-gray-700">Prestations (Prix en ${userProfile.currency_symbol})</label><div id="items-container" class="space-y-2"><div class="flex space-x-2"><input type="text" placeholder="Desc" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-navy item-desc"><input type="number" placeholder="Qté" class="w-16 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-navy item-qty"><input type="number" placeholder="Prix" class="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-navy item-price"><button onclick="addItem()" class="bg-gray-100 px-3 rounded-lg font-bold">+</button></div></div></div>
                             <div class="flex space-x-2 pt-4"><button onclick="closeModal()" class="flex-1 bg-gray-100 py-2 rounded-lg font-semibold">Annuler</button><button onclick="saveInvoice()" class="flex-1 bg-navy text-white py-2 rounded-lg font-semibold">Créer</button></div>
                         </div>
                     </div>
@@ -572,6 +636,7 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
             const profile = inv.profiles;
+            const symbol = profile.currency_symbol || 'FCFA';
 
             doc.setFillColor(16, 42, 67); doc.rect(0, 0, 210, 40, 'F');
             doc.setTextColor(255, 255, 255); doc.setFontSize(24); doc.setFont('helvetica', 'bold'); doc.text('FACTURE', 20, 25);
@@ -591,27 +656,49 @@
             inv.items.forEach(item => {
                 doc.text(item.description.substring(0, 50), 22, y);
                 doc.text(String(item.quantity), 120, y);
-                doc.text(`${item.unit_price.toFixed(2)} €`, 140, y);
-                doc.text(`${item.total.toFixed(2)} €`, 170, y);
+                doc.text(`${item.unit_price.toFixed(2)} ${symbol}`, 140, y);
+                doc.text(`${item.total.toFixed(2)} ${symbol}`, 170, y);
                 y += 8;
             });
             y += 5; doc.setDrawColor(16, 42, 67); doc.line(140, y, 190, y); y += 8;
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text('TOTAL:', 140, y); doc.text(`${inv.total.toFixed(2)} €`, 170, y);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text('TOTAL:', 140, y); doc.text(`${inv.total.toFixed(2)} ${symbol}`, 170, y);
 
+            // --- GÉNÉRATION QR CODE ---
             try {
                 const paymentLink = generatePaymentLink(inv.id, inv.total);
-                const qrCodeDataUrl = await QRCode.toDataURL(paymentLink, { width: 100, margin: 1, color: { dark: '#102a43', light: '#ffffff' } });
-                const pdfWidth = doc.internal.pageSize.getWidth(); const qrSize = 30; const xPosition = pdfWidth - qrSize - 20; const yPosition = 240;
-                doc.setDrawColor(229, 231, 235); doc.roundedRect(xPosition - 5, yPosition - 5, qrSize + 10, qrSize + 10, 2, 2, 'S');
+                const qrCodeDataUrl = await QRCode.toDataURL(paymentLink, { 
+                    width: 100, 
+                    margin: 1, 
+                    color: { dark: '#102a43', light: '#ffffff' } 
+                });
+
+                const pdfWidth = doc.internal.pageSize.getWidth();
+                const qrSize = 30; // 30x30mm
+                const xPosition = pdfWidth - qrSize - 20; // 20mm de marge droite
+                const yPosition = 240; // Position vertical bas
+
+                doc.setDrawColor(229, 231, 235);
+                doc.roundedRect(xPosition - 5, yPosition - 5, qrSize + 10, qrSize + 10, 2, 2, 'S');
                 doc.addImage(qrCodeDataUrl, 'PNG', xPosition, yPosition, qrSize, qrSize);
+                
                 doc.setFontSize(9); doc.setTextColor(100, 100, 100); doc.setFont('helvetica', 'bold');
                 doc.text("Scannez pour payer", xPosition + (qrSize/2), yPosition + qrSize + 5, { align: 'center' });
-            } catch (err) { console.error(err); }
+            } catch (err) {
+                console.error("Erreur génération QR Code:", err);
+            }
+
+            // --- MOYENS DE PAIEMENT PDF ---
+            let yPayment = 240;
+            doc.setFontSize(9); doc.setTextColor(100, 100, 100); doc.setFont('helvetica', 'bold');
+            doc.text("Moyens de paiement :", 20, yPayment);
+            doc.setFont('helvetica', 'normal');
+            if(profile.wave_number) { yPayment += 5; doc.text(`Wave : ${profile.wave_number}`, 20, yPayment); }
+            if(profile.orange_number) { yPayment += 5; doc.text(`Orange Money : ${profile.orange_number}`, 20, yPayment); }
+            if(profile.iban) { yPayment += 5; doc.text(`IBAN : ${profile.iban}`, 20, yPayment); }
 
             doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100);
             doc.text(profile.legal_mentions || '', 20, 270);
-            if(profile.iban) doc.text(`IBAN: ${profile.iban}`, 20, 275);
-            doc.text(`SIRET: ${profile.siret || ''}`, 20, 280);
+            doc.text(`SIRET: ${profile.siret || ''}`, 20, 275);
             doc.save(`${inv.number}.pdf`);
         }
 
@@ -623,15 +710,27 @@
             document.getElementById('prof-address').value = userProfile.address || '';
             document.getElementById('prof-siret').value = userProfile.siret || '';
             document.getElementById('prof-iban').value = userProfile.iban || '';
+            
+            // Chargement des nouveaux champs
+            document.getElementById('prof-country').value = userProfile.country || 'Sénégal';
+            document.getElementById('prof-wave').value = userProfile.wave_number || '';
+            document.getElementById('prof-orange').value = userProfile.orange_number || '';
             document.getElementById('prof-mentions').value = userProfile.legal_mentions || '';
         }
 
         async function saveSettings() {
+            updateCurrencyFromCountry(); // Met à jour userProfile avec le choix du select
+            
             const updates = {
                 company_name: document.getElementById('prof-name').value,
                 address: document.getElementById('prof-address').value,
                 siret: document.getElementById('prof-siret').value,
                 iban: document.getElementById('prof-iban').value,
+                country: document.getElementById('prof-country').value,
+                currency: userProfile.currency,
+                currency_symbol: userProfile.currency_symbol,
+                wave_number: document.getElementById('prof-wave').value,
+                orange_number: document.getElementById('prof-orange').value,
                 legal_mentions: document.getElementById('prof-mentions').value
             };
             const { error } = await sb.from('profiles').update(updates).eq('id', currentUser.id);
@@ -687,22 +786,23 @@
                     document.getElementById('pay-view').classList.remove('hidden');
                     document.getElementById('pay-amount').innerText = parseFloat(amountParam).toFixed(2);
                     
-                    const { data: inv } = await sb.from('invoices').select('number').eq('id', invoiceIdParam).single();
-                    if (inv) document.getElementById('pay-num').innerText = inv.number;
+                    const { data: inv } = await sb.from('invoices').select('number, profiles(currency_symbol)').eq('id', invoiceIdParam).single();
+                    if (inv) {
+                        document.getElementById('pay-num').innerText = inv.number;
+                        if (inv.profiles && inv.profiles.currency_symbol) {
+                            document.getElementById('pay-currency').innerText = inv.profiles.currency_symbol;
+                        }
+                    }
 
                     window.addEventListener('message', async (event) => {
                         if (event.data && event.data.status === 'success') {
                             await sb.from('invoices').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', invoiceIdParam);
                             document.getElementById('pay-status').innerText = 'Paiement réussi ! Merci.';
                             document.getElementById('pay-status').className = 'mt-6 font-medium text-green-600 text-xl';
-                            document.getElementById('kkiapay-btn').classList.add('hidden');
                         }
                     });
 
-                    window.openKkiapayWidget({ amount: parseInt(amountParam), key: "ccb685b078df11f1b736cd1b78c47fec", sandbox: true, data: { invoice_id: invoiceIdParam } });
                     document.getElementById('pay-status').innerText = 'En attente de paiement...';
-                    document.getElementById('kkiapay-btn').classList.remove('hidden');
-                    document.getElementById('kkiapay-btn').onclick = () => window.openKkiapayWidget({ amount: parseInt(amountParam), key: "ccb685b078df11f1b736cd1b78c47fec", sandbox: true });
                     return;
                 }
             } catch (e) { console.error(e); }
