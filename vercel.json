@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/cron-relances",
+      "schedule": "0 8 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",
