@@ -410,20 +410,26 @@
         }
 
         async function fetchProfile() {
-            const { data, error } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+            const { data: existingProfile, error } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+            
             if (error) {
-                const { data: newProfile } = await sb.from('profiles').insert([{ 
-                    id: currentUser.id, 
-                    email: currentUser.email, 
-                    plan: 'free',
-                    country: 'Sénégal',
-                    currency: 'XOF',
-                    currency_symbol: 'FCFA'
-                }]).select().single();
+                const pendingData = JSON.parse(localStorage.getItem('facturo_pending_profile') || 'null');
+                const defaultData = { 
+                    id: currentUser.id, email: currentUser.email, plan: 'free',
+                    country: pendingData?.country || 'Sénégal',
+                    currency: 'XOF', currency_symbol: 'FCFA'
+                };
+                const newProfileData = pendingData ? {
+                    ...defaultData,
+                    company_name: `${pendingData.firstname} ${pendingData.lastname}`,
+                    wave_number: pendingData.phone,
+                    orange_number: pendingData.phone
+                } : defaultData;
+                const { data: newProfile } = await sb.from('profiles').insert([newProfileData]).select().single();
                 userProfile = newProfile;
+                if (pendingData) localStorage.removeItem('facturo_pending_profile');
             } else {
-                userProfile = data;
-                // Assurer les valeurs par défaut si l'utilisateur existe mais n'a pas les champs
+                userProfile = existingProfile;
                 if (!userProfile.currency_symbol) userProfile.currency_symbol = 'FCFA';
             }
         }
@@ -785,6 +791,151 @@
         // GLOBAL INIT
         // ==========================================
         window.addEventListener('DOMContentLoaded', async () => {
+        // ==========================================
+        // REVERSE-PLG : INTERCEPTION LIEN D'EXIGENCE
+        // ==========================================
+        const urlParams = new URLSearchParams(window.location.search);
+        const source = urlParams.get('source');
+
+        if (source === 'exiger' && sb) {
+            const amount = urlParams.get('amount') || '0';
+            const agencyName = urlParams.get('agency') || 'Client';
+            const subject = urlParams.get('subject') || 'Prestation de services';
+
+            // 1. Masquer la connexion et afficher l'application
+            document.getElementById('auth-view').classList.add('hidden');
+            document.getElementById('app-view').classList.remove('hidden');
+
+            // 2. Injecter l'interface de Génération Rapide
+            const mainContent = document.querySelector('main');
+            mainContent.innerHTML = `
+                <section id="rapid-view" class="view active-view">
+                    <div class="max-w-2xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100 mt-10">
+                        <div class="text-center mb-8">
+                            <h1 class="text-3xl font-extrabold text-navy">Génération express</h1>
+                            <p class="text-gray-500 mt-2">Facture demandée par <span class="font-bold text-navy">${agencyName}</span></p>
+                        </div>
+                        
+                        <div class="bg-gray-50 p-4 rounded-lg mb-6 flex justify-between items-center">
+                            <div>
+                                <p class="text-sm text-gray-500">Montant à facturer</p>
+                                <p class="text-2xl font-bold text-navy">${parseInt(amount).toLocaleString('fr-FR')} FCFA</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-sm text-gray-500">Objet</p>
+                                <p class="text-sm font-medium text-navy">${subject}</p>
+                            </div>
+                        </div>
+
+                        <div id="rapid-form" class="space-y-4">
+                            <h3 class="text-lg font-bold text-navy">Vos informations</h3>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div><label class="block text-sm font-medium text-gray-700">Prénom *</label><input type="text" id="rapid-firstname" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-navy focus:border-navy"></div>
+                                <div><label class="block text-sm font-medium text-gray-700">Nom *</label><input type="text" id="rapid-lastname" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-navy focus:border-navy"></div>
+                            </div>
+                            <div><label class="block text-sm font-medium text-gray-700">Numéro Wave / Orange Money *</label><input type="text" id="rapid-phone" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-navy focus:border-navy" placeholder="Ex: 76 000 00 00"></div>
+                            <button id="rapid-pdf-btn" class="w-full bg-navy text-white py-3 rounded-lg font-bold hover:bg-navy-dark transition mt-4">Générer ma facture PDF</button>
+                        </div>
+
+                        <div id="rapid-email-capture" class="hidden space-y-4 mt-6">
+                            <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded">
+                                <p class="text-sm text-green-800 font-medium">✅ Facture générée avec succès !</p>
+                            </div>
+                            <h3 class="text-lg font-bold text-navy">Sauvegardez pour la prochaine fois</h3>
+                            <p class="text-sm text-gray-600">Entrez votre email pour recevoir cette facture et pré-remplir automatiquement vos futures factures.</p>
+                            <input type="email" id="rapid-email" class="block w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-navy focus:border-navy" placeholder="votre@email.com">
+                            <button id="rapid-save-btn" class="w-full bg-yellow-400 text-navy py-3 rounded-lg font-bold hover:bg-yellow-500 transition">Recevoir & Créer mon compte</button>
+                        </div>
+                    </div>
+                </section>
+            `;
+
+            // 3. Génération du PDF instantané
+            document.getElementById('rapid-pdf-btn').addEventListener('click', () => {
+                const firstname = document.getElementById('rapid-firstname').value.trim();
+                const lastname = document.getElementById('rapid-lastname').value.trim();
+                const phone = document.getElementById('rapid-phone').value.trim();
+
+                if (!firstname || !lastname || !phone) {
+                    return toast('Veuillez remplir tous les champs.', 'error');
+                }
+
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                const invoiceNumber = `FAC-RAPID-${Date.now().toString().slice(-6)}`;
+
+                // Design PDF Facturo
+                doc.setFillColor(16, 42, 67); doc.rect(0, 0, 210, 40, 'F');
+                doc.setTextColor(255, 255, 255); doc.setFontSize(24); doc.setFont('helvetica', 'bold'); doc.text('FACTURE', 20, 25);
+                doc.setFontSize(10); doc.setFont('helvetica', 'normal'); 
+                doc.text(`${firstname} ${lastname}`, 20, 32); 
+                doc.text(`Tél: ${phone}`, 20, 36);
+
+                doc.setTextColor(16, 42, 67); doc.setFontSize(12); doc.text(`Facture N°: ${invoiceNumber}`, 140, 20);
+                doc.setFontSize(10); doc.text(`Date: ${new Date().toLocaleDateString('fr-FR')}`, 140, 26);
+
+                doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.text('Facturé à:', 20, 60);
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(agencyName, 20, 66);
+
+                let y = 85;
+                doc.setFillColor(240, 240, 240); doc.rect(20, y, 170, 8, 'F');
+                doc.setFont('helvetica', 'bold'); doc.text('Description', 22, y + 5); doc.text('Total', 170, y + 5);
+                y += 10; doc.setFont('helvetica', 'normal');
+                doc.text(subject, 22, y);
+                doc.text(`${parseInt(amount).toLocaleString('fr-FR')} FCFA`, 170, y);
+                
+                y += 10; doc.setDrawColor(16, 42, 67); doc.line(140, y, 190, y); y += 8;
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text('TOTAL:', 140, y); doc.text(`${parseInt(amount).toLocaleString('fr-FR')} FCFA`, 170, y);
+
+                doc.setFontSize(9); doc.setTextColor(100, 100, 100); doc.setFont('helvetica', 'bold');
+                doc.text("Paiement Mobile Money :", 20, 250);
+                doc.setFont('helvetica', 'normal');
+                doc.text(`Wave / Orange Money : ${phone}`, 20, 255);
+
+                doc.save(`${invoiceNumber}.pdf`);
+
+                // Afficher la capture email
+                document.getElementById('rapid-form').classList.add('hidden');
+                document.getElementById('rapid-email-capture').classList.remove('hidden');
+            });
+
+            // 4. Capture Email et Magic Link (Création de compte en coulisse)
+            document.getElementById('rapid-save-btn').addEventListener('click', async () => {
+                const email = document.getElementById('rapid-email').value.trim();
+                if (!email) return toast('Veuillez entrer votre email.', 'error');
+
+                const firstname = document.getElementById('rapid-firstname').value.trim();
+                const lastname = document.getElementById('rapid-lastname').value.trim();
+                const phone = document.getElementById('rapid-phone').value.trim();
+
+                // Sauvegarde temporaire locale pour finaliser le profil après connexion Magic Link
+                const pendingProfile = { firstname, lastname, phone, email, agencyName, amount, subject };
+                localStorage.setItem('facturo_pending_profile', JSON.stringify(pendingProfile));
+
+                try {
+                    toast('Envoi du lien de connexion...', 'info');
+                    const { error } = await sb.auth.signInWithOtp({ 
+                        email, 
+                        options: { emailRedirectTo: window.location.origin }
+                    });
+                    
+                    if (error) throw error;
+                    
+                    document.getElementById('rapid-email-capture').innerHTML = `
+                        <div class="bg-green-50 border-l-4 border-green-500 p-6 rounded text-center">
+                            <p class="text-lg font-bold text-green-800 mb-2">Vérifiez votre boîte mail ! 📩</p>
+                            <p class="text-sm text-green-700">Un lien magique vous a été envoyé. Cliquez dessus pour activer votre compte et sauvegarder vos infos automatiquement pour vos prochaines factures.</p>
+                        </div>
+                    `;
+                } catch (err) {
+                    toast(err.message, 'error');
+                }
+            });
+
+            return; // Stoppe l'exécution du reste du script d'init classique
+        }
+
+
             // 1. Vérifier si on est sur la page de paiement
             try {
                 const urlParams = new URLSearchParams(window.location.search);
